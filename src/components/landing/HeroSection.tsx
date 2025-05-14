@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowRight, CheckCircle, ShieldCheck, ChevronRight, Sparkles } from 'lucide-react';
 import { Button } from "@/components/ui/button";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from '@/lib/auth-context';
+import { toast } from 'sonner';
 
 interface HeroSectionProps {
   // You can add any props here if needed in the future
@@ -32,10 +34,26 @@ const FloatingBubble = ({ size, delay, duration, left, top }: {
 
 const HeroSection: React.FC<HeroSectionProps> = () => {
   const [isVisible, setIsVisible] = useState(false);
+  const { user, signInWithGoogle } = useAuth();
+  const navigate = useNavigate();
   
   useEffect(() => {
     setIsVisible(true);
   }, []);
+
+  const handleGetStarted = async () => {
+    try {
+      if (!user) {
+        await signInWithGoogle();
+      } else if (!user.has_completed_kyc) {
+        navigate('/kyc-verification');
+      } else {
+        navigate('/dashboard');
+      }
+    } catch (error) {
+      toast.error('Failed to sign in with Google. Please try again.');
+    }
+  };
 
   // Particles for interactive background
   const particles = [];
@@ -93,10 +111,15 @@ const HeroSection: React.FC<HeroSectionProps> = () => {
           </div>
           
           <div className={`flex flex-col sm:flex-row gap-4 mb-12 transition-all duration-1000 delay-200 ${isVisible ? 'opacity-100 transform translate-y-0' : 'opacity-0 transform translate-y-8'}`}>
-            <Button asChild size="lg" className="bg-gradient-to-r from-primary to-secondary hover:from-primary/80 hover:to-secondary/80 text-white px-8 py-6 rounded-xl shadow-glow hover:shadow-glow-intense transition-all duration-300">
-              <Link to="/kyc-verification" className="flex items-center text-lg">
-                Get Started <ChevronRight className="ml-2 h-5 w-5" />
-              </Link>
+            <Button
+              size="lg"
+              onClick={handleGetStarted}
+              className="bg-gradient-to-r from-primary to-secondary hover:from-primary/80 hover:to-secondary/80 text-white px-8 py-6 rounded-xl shadow-glow hover:shadow-glow-intense transition-all duration-300"
+            >
+              <span className="flex items-center text-lg">
+                {user ? (user.has_completed_kyc ? 'Go to Dashboard' : 'Complete KYC') : 'Get Started'} 
+                <ChevronRight className="ml-2 h-5 w-5" />
+              </span>
             </Button>
             <Button asChild size="lg" variant="outline" className="border-primary/30 bg-blue-900/20 hover:bg-blue-800/30 hover:border-primary/60 text-primary hover:text-white px-8 py-6 rounded-xl transition-all duration-300">
               <Link to="/about" className="flex items-center text-lg">

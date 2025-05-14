@@ -1,21 +1,100 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ZKIDLogo from "@/components/ZKIDLogo";
 import { toast } from "sonner";
 import { QrCode, Check, Calendar, Users, Shield, ChevronRight, Bell, Settings, User } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context";
+import { fetchPolls, castVote, checkEligibility } from "@/lib/polls-service";
+import { PollWithVotes } from "@/lib/supabase-types";
+
+interface VerificationDetails {
+  full_name: string;
+  date_of_birth: string;
+  nationality: string;
+  verified_at: string;
+}
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("zkid");
+  const [verificationDetails, setVerificationDetails] = useState<VerificationDetails | null>(null);
+  const { user } = useAuth();
+  const [polls, setPolls] = useState<PollWithVotes[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchVerificationDetails = async () => {
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('verification_details')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      if (error) {
+        console.error('Error fetching verification details:', error);
+        return;
+      }
+
+      setVerificationDetails(data);
+    };
+
+    fetchVerificationDetails();
+  }, [user]);
+
+  useEffect(() => {
+    const loadPolls = async () => {
+      if (!user) return;
+      setLoading(true);
+      const pollsData = await fetchPolls(user.id);
+      setPolls(pollsData);
+      setLoading(false);
+    };
+
+    loadPolls();
+  }, [user]);
 
   const handleShareQR = () => {
     toast.success("QR code copied to clipboard!");
   };
 
-  const handleVoteInPoll = (pollId) => {
-    toast.success(`Vote cast in poll #${pollId}!`);
+  const handleVoteInPoll = async (pollId: string, optionId: string) => {
+    if (!user) {
+      toast.error("Please sign in to vote");
+      return;
+    }
+
+    // Check eligibility
+    const isEligible = await checkEligibility(user.id, pollId);
+    if (!isEligible) {
+      toast.error("You are not eligible to vote in this poll");
+      return;
+    }
+
+    // Cast vote
+    const success = await castVote(user.id, pollId, optionId);
+    if (success) {
+      // Refresh polls data
+      const updatedPolls = await fetchPolls(user.id);
+      setPolls(updatedPolls);
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  const calculatePercentage = (votes: number, total: number) => {
+    if (total === 0) return 0;
+    return Math.round((votes / total) * 100);
   };
 
   return (
@@ -30,7 +109,9 @@ const Dashboard = () => {
                 <Bell className="h-5 w-5" />
                 <span className="absolute top-0 right-0 h-2 w-2 bg-primary rounded-full"></span>
               </button>
-              <span className="text-sm text-slate-300 hidden md:inline-block">Connected as: John Doe</span>
+              <span className="text-sm text-slate-300 hidden md:inline-block">
+                Connected as: {verificationDetails?.full_name || 'Loading...'}
+              </span>
               <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center">
                 <User className="h-4 w-4 text-primary" />
               </div>
@@ -62,7 +143,7 @@ const Dashboard = () => {
                         <User className="h-8 w-8 text-primary" />
                       </div>
                     </div>
-                    <h3 className="font-medium text-white">John Doe</h3>
+                    <h3 className="font-medium text-white">{verificationDetails?.full_name || 'Loading...'}</h3>
                     <p className="text-xs text-slate-300 mb-3">Verified Citizen</p>
                     <div className="flex items-center justify-center gap-1 bg-green-500/20 text-green-300 px-2 py-1 rounded-full text-xs font-medium">
                       <Check className="h-3 w-3" />
@@ -183,7 +264,9 @@ const Dashboard = () => {
                               </div>
                               <div>
                                 <h3 className="font-medium group-hover:text-primary transition-colors">Nepali Citizenship</h3>
-                                <p className="text-xs text-slate-400">Verified on May 12, 2025</p>
+                                <p className="text-xs text-slate-400">
+                                  Verified on {verificationDetails ? formatDate(verificationDetails.verified_at) : 'Loading...'}
+                                </p>
                               </div>
                             </div>
                             <span className="text-xs bg-green-500/20 text-green-300 px-2 py-1 rounded-full">Active</span>
@@ -196,7 +279,9 @@ const Dashboard = () => {
                               </div>
                               <div>
                                 <h3 className="font-medium group-hover:text-primary transition-colors">Adult Age Verification</h3>
-                                <p className="text-xs text-slate-400">Verified on May 12, 2025</p>
+                                <p className="text-xs text-slate-400">
+                                  Date of Birth: {verificationDetails?.date_of_birth || 'Loading...'}
+                                </p>
                               </div>
                             </div>
                             <span className="text-xs bg-green-500/20 text-green-300 px-2 py-1 rounded-full">Active</span>
@@ -204,15 +289,17 @@ const Dashboard = () => {
                           
                           <div className="bg-white/5 border border-white/10 hover:border-primary/50 transition-colors rounded-lg p-4 flex items-center justify-between group">
                             <div className="flex items-center gap-3">
-                              <div className="h-10 w-10 rounded-lg bg-primary/20 flex items-center justify-center opacity-50">
+                              <div className="h-10 w-10 rounded-lg bg-primary/20 flex items-center justify-center">
                                 <Check className="h-5 w-5 text-primary" />
                               </div>
                               <div>
-                                <h3 className="font-medium group-hover:text-primary transition-colors">Regional Voter Registration</h3>
-                                <p className="text-xs text-slate-400">Pending verification</p>
+                                <h3 className="font-medium group-hover:text-primary transition-colors">Nationality</h3>
+                                <p className="text-xs text-slate-400">
+                                  {verificationDetails?.nationality || 'Loading...'}
+                                </p>
                               </div>
                             </div>
-                            <span className="text-xs bg-yellow-500/20 text-yellow-300 px-2 py-1 rounded-full">Pending</span>
+                            <span className="text-xs bg-green-500/20 text-green-300 px-2 py-1 rounded-full">Active</span>
                           </div>
                         </div>
                         
@@ -281,140 +368,88 @@ const Dashboard = () => {
                     </div>
                     
                     <div className="p-6 space-y-6">
-                      {/* Poll 1 */}
-                      <div className="bg-white/5 hover:bg-white/10 transition-colors border border-white/10 hover:border-primary/50 rounded-lg overflow-hidden">
-                        <div className="p-5 border-b border-white/10">
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <h3 className="text-lg font-medium">Kathmandu Infrastructure Development</h3>
-                              <p className="text-xs text-slate-400 mt-1">Regional poll for Kathmandu residents only</p>
-                            </div>
-                            <span className="text-xs bg-green-500/20 text-green-300 px-2 py-1 rounded-full whitespace-nowrap">Eligible</span>
-                          </div>
+                      {loading ? (
+                        <div className="text-center py-8">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                          <p className="text-slate-400 mt-4">Loading polls...</p>
                         </div>
-                        
-                        <div className="p-5">
-                          <p className="text-sm mb-4">Which infrastructure project should be prioritized in Kathmandu?</p>
-                          
-                          <div className="space-y-3">
-                            <div className="flex items-center">
-                              <input type="radio" id="option1-poll1" name="poll1" className="h-4 w-4 text-primary accent-primary" />
-                              <label htmlFor="option1-poll1" className="ml-2 text-sm">Public transportation expansion</label>
-                            </div>
-                            <div className="flex items-center">
-                              <input type="radio" id="option2-poll1" name="poll1" className="h-4 w-4 text-primary accent-primary" />
-                              <label htmlFor="option2-poll1" className="ml-2 text-sm">Road infrastructure improvement</label>
-                            </div>
-                            <div className="flex items-center">
-                              <input type="radio" id="option3-poll1" name="poll1" className="h-4 w-4 text-primary accent-primary" />
-                              <label htmlFor="option3-poll1" className="ml-2 text-sm">Water supply system upgrade</label>
-                            </div>
-                          </div>
+                      ) : polls.length === 0 ? (
+                        <div className="text-center py-8">
+                          <p className="text-slate-400">No active polls available</p>
                         </div>
-                        
-                        <div className="px-5 py-4 bg-white/5 flex justify-between items-center">
-                          <div className="flex items-center gap-2">
-                            <div className="h-2 w-2 bg-green-400 rounded-full"></div>
-                            <span className="text-xs text-slate-300">Ends in 3 days</span>
-                          </div>
-                          <Button 
-                            className="bg-gradient-to-r from-primary to-secondary hover:opacity-90 text-white"
-                            onClick={() => handleVoteInPoll("1")}
-                          >
-                            Cast Vote
-                          </Button>
-                        </div>
-                      </div>
-                      
-                      {/* Poll 2 */}
-                      <div className="bg-white/5 hover:bg-white/10 transition-colors border border-white/10 hover:border-primary/50 rounded-lg overflow-hidden">
-                        <div className="p-5 border-b border-white/10">
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <h3 className="text-lg font-medium">National Educational Reform</h3>
-                              <p className="text-xs text-slate-400 mt-1">National poll for all Nepali citizens</p>
+                      ) : (
+                        polls.map((poll) => (
+                          <div key={poll.id} className="bg-white/5 hover:bg-white/10 transition-colors border border-white/10 hover:border-primary/50 rounded-lg overflow-hidden">
+                            <div className="p-5 border-b border-white/10">
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <h3 className="text-lg font-medium">{poll.title}</h3>
+                                  <p className="text-xs text-slate-400 mt-1">{poll.description}</p>
+                                </div>
+                                <span className={`text-xs px-2 py-1 rounded-full whitespace-nowrap ${
+                                  poll.user_vote 
+                                    ? 'bg-green-500/20 text-green-300'
+                                    : 'bg-yellow-500/20 text-yellow-300'
+                                }`}>
+                                  {poll.user_vote ? 'Voted' : 'Eligible'}
+                                </span>
+                              </div>
                             </div>
-                            <span className="text-xs bg-green-500/20 text-green-300 px-2 py-1 rounded-full whitespace-nowrap">Eligible</span>
-                          </div>
-                        </div>
-                        
-                        <div className="p-5">
-                          <p className="text-sm mb-4">What should be the primary focus of educational reform?</p>
-                          
-                          <div className="space-y-3">
-                            <div className="flex items-center">
-                              <input type="radio" id="option1-poll2" name="poll2" className="h-4 w-4 text-primary accent-primary" />
-                              <label htmlFor="option1-poll2" className="ml-2 text-sm">Technology integration in classrooms</label>
+                            
+                            <div className="p-5">
+                              <div className="space-y-4">
+                                {poll.options.map((option) => (
+                                  <div key={option.id} className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center">
+                                        <input
+                                          type="radio"
+                                          id={`option-${option.id}`}
+                                          name={`poll-${poll.id}`}
+                                          className="h-4 w-4 text-primary accent-primary"
+                                          checked={option.has_voted}
+                                          onChange={() => handleVoteInPoll(poll.id, option.id)}
+                                          disabled={!!poll.user_vote}
+                                        />
+                                        <label htmlFor={`option-${option.id}`} className="ml-2 text-sm">
+                                          {option.text}
+                                        </label>
+                                      </div>
+                                      <span className="text-xs text-slate-400">
+                                        {calculatePercentage(option.vote_count, poll.total_votes)}%
+                                      </span>
+                                    </div>
+                                    <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                                      <div
+                                        className="h-full bg-primary transition-all duration-500"
+                                        style={{
+                                          width: `${calculatePercentage(option.vote_count, poll.total_votes)}%`
+                                        }}
+                                      />
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
-                            <div className="flex items-center">
-                              <input type="radio" id="option2-poll2" name="poll2" className="h-4 w-4 text-primary accent-primary" />
-                              <label htmlFor="option2-poll2" className="ml-2 text-sm">Teacher training and development</label>
-                            </div>
-                            <div className="flex items-center">
-                              <input type="radio" id="option3-poll2" name="poll2" className="h-4 w-4 text-primary accent-primary" />
-                              <label htmlFor="option3-poll2" className="ml-2 text-sm">Curriculum modernization</label>
-                            </div>
-                          </div>
-                        </div>
-                        
-                        <div className="px-5 py-4 bg-white/5 flex justify-between items-center">
-                          <div className="flex items-center gap-2">
-                            <div className="h-2 w-2 bg-green-400 rounded-full"></div>
-                            <span className="text-xs text-slate-300">Ends in 7 days</span>
-                          </div>
-                          <Button 
-                            className="bg-gradient-to-r from-primary to-secondary hover:opacity-90 text-white"
-                            onClick={() => handleVoteInPoll("2")}
-                          >
-                            Cast Vote
-                          </Button>
-                        </div>
-                      </div>
-                      
-                      {/* Poll 3 */}
-                      <div className="bg-white/5 border border-white/10 rounded-lg overflow-hidden opacity-80">
-                        <div className="p-5 border-b border-white/10">
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <h3 className="text-lg font-medium">Pokhara Tourism Development</h3>
-                              <p className="text-xs text-slate-400 mt-1">Regional poll for Pokhara residents only</p>
-                            </div>
-                            <span className="text-xs bg-red-500/20 text-red-300 px-2 py-1 rounded-full whitespace-nowrap">Not eligible</span>
-                          </div>
-                        </div>
-                        
-                        <div className="p-5">
-                          <p className="text-sm mb-4">Which aspect of tourism should Pokhara focus on developing?</p>
-                          
-                          <div className="space-y-3">
-                            <div className="flex items-center opacity-50">
-                              <input type="radio" id="option1-poll3" name="poll3" className="h-4 w-4 text-primary" disabled />
-                              <label htmlFor="option1-poll3" className="ml-2 text-sm">Eco-tourism and sustainability</label>
-                            </div>
-                            <div className="flex items-center opacity-50">
-                              <input type="radio" id="option2-poll3" name="poll3" className="h-4 w-4 text-primary" disabled />
-                              <label htmlFor="option2-poll3" className="ml-2 text-sm">Adventure sports expansion</label>
-                            </div>
-                            <div className="flex items-center opacity-50">
-                              <input type="radio" id="option3-poll3" name="poll3" className="h-4 w-4 text-primary" disabled />
-                              <label htmlFor="option3-poll3" className="ml-2 text-sm">Cultural tourism enhancement</label>
+                            
+                            <div className="px-5 py-4 bg-white/5 flex justify-between items-center">
+                              <div className="flex items-center gap-2">
+                                <div className={`h-2 w-2 rounded-full ${
+                                  new Date(poll.end_date) > new Date() ? 'bg-green-400' : 'bg-red-400'
+                                }`}></div>
+                                <span className="text-xs text-slate-300">
+                                  {new Date(poll.end_date) > new Date()
+                                    ? `Ends in ${Math.ceil((new Date(poll.end_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} days`
+                                    : 'Ended'}
+                                </span>
+                              </div>
+                              <div className="text-xs text-slate-400">
+                                Total votes: {poll.total_votes}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                        
-                        <div className="px-5 py-4 bg-white/5 flex justify-between items-center">
-                          <div className="flex items-center gap-2">
-                            <div className="h-2 w-2 bg-red-400 rounded-full"></div>
-                            <span className="text-xs text-slate-300">Ends in 5 days</span>
-                          </div>
-                          <Button 
-                            className="bg-slate-600 text-white"
-                            disabled
-                          >
-                            Not Eligible
-                          </Button>
-                        </div>
-                      </div>
+                        ))
+                      )}
                     </div>
                   </div>
                 </TabsContent>

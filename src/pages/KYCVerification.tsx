@@ -1,4 +1,3 @@
-
 import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -6,14 +5,19 @@ import { Progress } from "@/components/ui/progress";
 import ZKIDLogo from "@/components/ZKIDLogo";
 import { toast } from "sonner";
 import { Upload, Check, AlertCircle } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context";
+import { verifyDocument } from "@/lib/ocr-service";
 
 const KYCVerification = () => {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [stage, setStage] = useState<"upload" | "processing" | "proof">("upload");
   const [progress, setProgress] = useState(0);
+  const [verificationResult, setVerificationResult] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
+  const { user, setUser } = useAuth();
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -51,7 +55,7 @@ const KYCVerification = () => {
     }
   };
 
-  const handleUpload = () => {
+  const handleUpload = async () => {
     if (!file) {
       toast.error("Please select a document to upload");
       return;
@@ -60,25 +64,109 @@ const KYCVerification = () => {
     // Start processing
     setStage("processing");
     
-    // Simulate processing with progress
-    let currentProgress = 0;
-    const interval = setInterval(() => {
-      currentProgress += 5;
-      setProgress(currentProgress);
+    try {
+      // Simulate initial progress
+      setProgress(20);
       
-      if (currentProgress >= 100) {
-        clearInterval(interval);
-        setStage("proof");
-        toast.success("Document successfully processed!");
+      // Verify document using OCR
+      const result = await verifyDocument(preview!);
+      setVerificationResult(result);
+      
+      if (!result.is_nepali_citizenship) {
+        toast.error(result.message || "Invalid document. Please upload a Nepali citizenship certificate.");
+        setStage("upload");
+        return;
       }
-    }, 200);
+      
+      // Simulate remaining progress
+      setProgress(100);
+      setStage("proof");
+      toast.success("Document successfully verified!");
+    } catch (error) {
+      console.error("Error processing document:", error);
+      toast.error("Failed to process document. Please try again.");
+      setStage("upload");
+    }
   };
 
-  const handleGenerateProof = () => {
-    toast.success("Zero-knowledge proof generated successfully!");
-    setTimeout(() => {
-      navigate("/dashboard");
-    }, 1500);
+  const handleGenerateProof = async () => {
+    try {
+      console.log("Starting proof generation...");
+      
+      if (!user) {
+        console.log("No user found, redirecting to home...");
+        toast.error("Please sign in to continue");
+        navigate('/');
+        return;
+      }
+
+      if (!verificationResult?.data) {
+        console.log("No verification data found");
+        toast.error("Verification data is missing");
+        return;
+      }
+
+      console.log("Storing verification details...", {
+        user_id: user.id,
+        full_name: verificationResult.data.full_name,
+        date_of_birth: verificationResult.data.date_of_birth,
+        nationality: verificationResult.data.nationality
+      });
+
+      // Store verification data in the verification_details table
+      const { data: verificationData, error: verificationError } = await supabase
+        .from('verification_details')
+        .upsert({
+          user_id: user.id,
+          full_name: verificationResult.data.full_name,
+          date_of_birth: verificationResult.data.date_of_birth,
+          nationality: verificationResult.data.nationality,
+          verified_at: new Date().toISOString()
+        })
+        .select();
+
+      if (verificationError) {
+        console.error('Error storing verification details:', verificationError);
+        toast.error("Failed to store verification details");
+        return;
+      }
+
+      console.log("Verification details stored successfully:", verificationData);
+
+      console.log("Updating user KYC status...");
+      // Update user's KYC status in the database
+      const { data: updatedUser, error } = await supabase
+        .from('users')
+        .update({ 
+          has_completed_kyc: true
+        })
+        .eq('id', user.id)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error updating KYC status:', error);
+        toast.error("Failed to update verification status");
+        return;
+      }
+
+      console.log("User KYC status updated successfully:", updatedUser);
+
+      console.log("Updating local user state...");
+      // Update local user state
+      if (updatedUser) {
+        setUser(updatedUser);
+      }
+
+      toast.success("Zero-knowledge proof generated successfully!");
+      
+      console.log("Navigating to dashboard...");
+      // Navigate to dashboard
+      navigate("/dashboard", { replace: true });
+    } catch (error) {
+      console.error('Error generating proof:', error);
+      toast.error("Failed to generate proof. Please try again.");
+    }
   };
 
   return (
@@ -237,11 +325,22 @@ const KYCVerification = () => {
                 <Check className="h-10 w-10 text-primary" />
               </div>
               
-              <h3 className="text-2xl font-semibold">Document Successfully Processed!</h3>
+              <h3 className="text-2xl font-semibold">Document Successfully Verified!</h3>
               
               <p className="text-slate-300 max-w-md mx-auto">
-                Your document has been verified. We're ready to generate your zero-knowledge proof.
+                Your Nepali citizenship certificate has been verified. We're ready to generate your zero-knowledge proof.
               </p>
+              
+              {verificationResult?.data && (
+                <div className="bg-white/5 border border-white/10 rounded-lg p-4 text-left">
+                  <h4 className="text-sm font-semibold mb-2">Verified Information:</h4>
+                  <div className="space-y-2 text-sm text-slate-300">
+                    <p><span className="font-medium">Name:</span> {verificationResult.data.full_name}</p>
+                    <p><span className="font-medium">Date of Birth:</span> {verificationResult.data.date_of_birth}</p>
+                    <p><span className="font-medium">Nationality:</span> {verificationResult.data.nationality}</p>
+                  </div>
+                </div>
+              )}
               
               <div className="bg-white/5 border border-white/10 rounded-lg p-4 text-left">
                 <p className="text-sm font-semibold mb-2">What is a zero-knowledge proof?</p>
@@ -269,7 +368,10 @@ const KYCVerification = () => {
               <Button 
                 className="btn-gradient text-lg py-6 px-8"
                 size="lg"
-                onClick={handleGenerateProof}
+                onClick={() => {
+                  console.log("Generate zkID button clicked");
+                  handleGenerateProof();
+                }}
               >
                 Generate My zkID
               </Button>
