@@ -1,0 +1,130 @@
+{
+  "address": "F9BEdj8sdPevfz2mYCxC3seg9MW9edLRUyGs8gsPjmRx",
+  "metadata": {
+    "name": "citizenship_verifier",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Created with Anchor"
+  },
+  "instructions": [
+    {
+      "name": "store_proof",
+      "discriminator": [
+        135,
+        188,
+        214,
+        120,
+        42,
+        122,
+        73,
+        134
+      ],
+      "accounts": [
+        {
+          "name": "proof_account",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "proof_data",
+          "type": {
+            "defined": {
+              "name": "ProofData"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "ProofAccount",
+      "discriminator": [
+        54,
+        244,
+        192,
+        233,
+        218,
+        58,
+        44,
+        242
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "StringTooLong",
+      "msg": "String exceeds maximum allowed length"
+    }
+  ],
+  "types": [
+    {
+      "name": "ProofAccount",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "user_id",
+            "type": "string"
+          },
+          {
+            "name": "citizenship_number",
+            "type": "string"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "dob",
+            "type": "string"
+          },
+          {
+            "name": "zk_proof",
+            "type": "bytes"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProofData",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "user_id",
+            "type": "string"
+          },
+          {
+            "name": "citizenship_number",
+            "type": "string"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "dob",
+            "type": "string"
+          },
+          {
+            "name": "zk_proof",
+            "type": "bytes"
+          }
+        ]
+      }
+    }
+  ]
+}

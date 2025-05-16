@@ -9,6 +9,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import { fetchPolls, castVote, checkEligibility } from "@/lib/polls-service";
 import { PollWithVotes } from "@/lib/supabase-types";
+import QRCode from 'react-qr-code';
 
 interface VerificationDetails {
   full_name: string;
@@ -24,6 +25,7 @@ const Dashboard = () => {
   const { user } = useAuth();
   const [polls, setPolls] = useState<PollWithVotes[]>([]);
   const [loading, setLoading] = useState(true);
+  const [proof, setProof] = useState<any>(null);
 
   useEffect(() => {
     const fetchVerificationDetails = async () => {
@@ -58,8 +60,51 @@ const Dashboard = () => {
     loadPolls();
   }, [user]);
 
+  useEffect(() => {
+    async function fetchProof() {
+      if (!user) return;
+      
+      setLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('verification_proofs')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+          
+        if (error) {
+          console.error('Error fetching proof:', error);
+          return;
+        }
+        
+        setProof(data);
+      } catch (err) {
+        console.error('Error in fetchProof:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    fetchProof();
+  }, [user]);
+
   const handleShareQR = () => {
-    toast.success("QR code copied to clipboard!");
+    if (!verificationUrl) {
+      toast.error("Verification URL not available");
+      return;
+    }
+    
+    // Copy to clipboard
+    try {
+      navigator.clipboard.writeText(verificationUrl);
+      toast.success("Verification link copied to clipboard!");
+      console.log("Copied URL to clipboard:", verificationUrl);
+    } catch (err) {
+      console.error("Failed to copy to clipboard:", err);
+      toast.error("Failed to copy to clipboard");
+    }
   };
 
   const handleVoteInPoll = async (pollId: string, optionId: string) => {
@@ -96,6 +141,14 @@ const Dashboard = () => {
     if (total === 0) return 0;
     return Math.round((votes / total) * 100);
   };
+
+  const verificationUrl = proof ? `${window.location.origin}/verify/${proof.proof_hash}` : '';
+  
+  useEffect(() => {
+    if (proof && proof.proof_hash) {
+      console.log('Verification QR code URL:', verificationUrl);
+    }
+  }, [proof, verificationUrl]);
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-b from-slate-900 to-slate-950">
@@ -231,7 +284,7 @@ const Dashboard = () => {
                           <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-primary to-secondary opacity-75 blur"></div>
                           <div className="relative bg-white p-4 rounded-xl">
                             <div className="aspect-square w-48 h-48 md:w-56 md:h-56 bg-black flex items-center justify-center">
-                              <QrCode className="w-3/4 h-3/4 text-white" />
+                              <QRCode value={verificationUrl} size={256} />
                             </div>
                             <div className="absolute -top-2 -right-2 bg-primary text-white text-xs px-2 py-1 rounded-full flex items-center gap-1">
                               <Check className="h-3 w-3" />
