@@ -1,14 +1,22 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
+import { useAnchorWallet } from '@solana/wallet-adapter-react';
+import { toast } from 'sonner';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
   requireKyc?: boolean;
+  requireWallet?: boolean;
 }
 
-export function ProtectedRoute({ children, requireKyc = false }: ProtectedRouteProps) {
+export function ProtectedRoute({ 
+  children, 
+  requireKyc = false,
+  requireWallet = false 
+}: ProtectedRouteProps) {
   const { user, loading } = useAuth();
   const location = useLocation();
+  const wallet = useAnchorWallet();
 
   if (loading) {
     return (
@@ -19,6 +27,12 @@ export function ProtectedRoute({ children, requireKyc = false }: ProtectedRouteP
   }
 
   if (!user) {
+    return <Navigate to="/" state={{ from: location }} replace />;
+  }
+
+  // Only check for wallet if it's required for this route
+  if (requireWallet && !wallet) {
+    toast.error("Please connect your wallet to continue");
     return <Navigate to="/" state={{ from: location }} replace />;
   }
 

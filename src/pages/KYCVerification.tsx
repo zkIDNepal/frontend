@@ -8,6 +8,9 @@ import { Upload, Check, AlertCircle } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import { verifyDocument } from "@/lib/ocr-service";
+import { ReclaimProofGenerator } from "@/components/ReclaimProofGenerator";
+import { useWallet } from '@solana/wallet-adapter-react';
+import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 
 const KYCVerification = () => {
   const [file, setFile] = useState<File | null>(null);
@@ -18,6 +21,7 @@ const KYCVerification = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const { user, setUser } = useAuth();
+  const { publicKey } = useWallet();
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -89,7 +93,7 @@ const KYCVerification = () => {
     }
   };
 
-  const handleGenerateProof = async () => {
+  const handleGenerateProof = async (proofData?: any) => {
     try {
       console.log("Starting proof generation...");
       
@@ -106,11 +110,18 @@ const KYCVerification = () => {
         return;
       }
 
+      if (!publicKey) {
+        console.log("No wallet connected");
+        toast.error("Please connect your wallet first");
+        return;
+      }
+
       console.log("Storing verification details...", {
         user_id: user.id,
         full_name: verificationResult.data.full_name,
         date_of_birth: verificationResult.data.date_of_birth,
-        nationality: verificationResult.data.nationality
+        nationality: verificationResult.data.nationality,
+        wallet_address: publicKey.toString()
       });
 
       // Store verification data in the verification_details table
@@ -121,7 +132,9 @@ const KYCVerification = () => {
           full_name: verificationResult.data.full_name,
           date_of_birth: verificationResult.data.date_of_birth,
           nationality: verificationResult.data.nationality,
-          verified_at: new Date().toISOString()
+          verified_at: new Date().toISOString(),
+          wallet_address: publicKey.toString(),
+          proof_data: proofData ? JSON.stringify(proofData) : null
         })
         .select();
 
@@ -348,6 +361,30 @@ const KYCVerification = () => {
                   A zero-knowledge proof allows you to prove you possess certain information without revealing the information itself. In this case, you can prove you're a Nepali citizen without sharing your personal details.
                 </p>
               </div>
+
+              {/* Wallet Connect Section */}
+              <div className="bg-white/5 border border-white/10 rounded-lg p-4">
+                <p className="text-sm text-slate-300 mb-4">
+                  <span className="font-semibold">Connect Wallet</span>
+                </p>
+                <p className="text-xs text-slate-300 mb-4">
+                  To generate your zero-knowledge proof, you need to connect your Solana wallet. This allows us to create a secure, blockchain-based proof of your identity.
+                </p>
+                <div className="flex justify-center">
+                  <WalletMultiButton className="!bg-gradient-to-r !from-primary !to-secondary hover:!opacity-90 !text-white" />
+                </div>
+                {publicKey && (
+                  <p className="text-xs text-green-400 mt-2 text-center">
+                    Wallet connected: {publicKey.toString().slice(0, 4)}...{publicKey.toString().slice(-4)}
+                  </p>
+                )}
+              </div>
+
+              {/* Add Reclaim Proof Generator */}
+              <ReclaimProofGenerator 
+                ocrData={verificationResult?.data || null}
+                onProofGenerated={handleGenerateProof}
+              />
             </div>
           )}
           
@@ -361,19 +398,6 @@ const KYCVerification = () => {
                 disabled={!file}
               >
                 Continue
-              </Button>
-            )}
-            
-            {stage === "proof" && (
-              <Button 
-                className="btn-gradient text-lg py-6 px-8"
-                size="lg"
-                onClick={() => {
-                  console.log("Generate zkID button clicked");
-                  handleGenerateProof();
-                }}
-              >
-                Generate My zkID
               </Button>
             )}
           </div>
