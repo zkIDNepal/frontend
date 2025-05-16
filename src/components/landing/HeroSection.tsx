@@ -102,11 +102,10 @@ const HeroSection: React.FC<HeroSectionProps> = () => {
             </div>
             <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold mb-6 animate-gradient-text">
               <span className="bg-clip-text text-transparent bg-gradient-to-r from-primary via-purple-500 to-secondary">One ID Verification</span>
-              <br />For All Your Payments
+              <br />For All Your Applications
             </h1>
             <p className="text-lg text-gray-300 mb-8 max-w-2xl mx-auto">
-              zkID Nepal simplifies KYC verification across all payment systems in Nepal. 
-              Verify once, use everywhere with blockchain security.
+              Securely complete your KYC once and receive a reusable, zero-knowledge credential you control.
             </p>
           </div>
           
@@ -148,7 +147,7 @@ const HeroSection: React.FC<HeroSectionProps> = () => {
                       </div>
                       <div>
                         <h3 className="text-xl font-semibold text-white">Verified Identity</h3>
-                        <p className="text-sm text-gray-300">Secured with zkSNARK technology</p>
+                        <p className="text-sm text-gray-300">Secured with Reclaim Protocol & Solana </p>
                       </div>
                     </div>
                     
